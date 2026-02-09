@@ -1,0 +1,14 @@
+{
+  "statuts": {
+    "en_attente": "En attente",
+    "confirme": "Confirmé",
+    "annule": "Annulé",
+    "termine": "Terminé"
+  },
+  "badges": {
+    "En attente": "bg-warning",
+    "Confirmé": "bg-success",
+    "Annulé": "bg-danger",
+    "Terminé": "bg-secondary"
+  }
+}

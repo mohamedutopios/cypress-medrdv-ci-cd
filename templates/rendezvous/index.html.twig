@@ -1,0 +1,25 @@
+{% extends 'base.html.twig' %}
+{% block title %}Rendez-vous{% endblock %}
+{% block body %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div><h2 class="mb-1">Rendez-vous</h2><p class="text-muted mb-0">{{ rendez_vous|length }} rendez-vous</p></div>
+    <a href="{{ path('app_rendezvous_new') }}" class="btn btn-primary"><i class="bi bi-calendar-plus"></i> Nouveau RDV</a>
+</div>
+<div class="card mb-4"><div class="card-body py-3"><div class="d-flex gap-2 flex-wrap align-items-center">
+    <span class="text-muted me-2"><i class="bi bi-funnel"></i> Statut :</span>
+    <a href="{{ path('app_rendezvous_index') }}" class="btn btn-sm {{ currentStatut == '' ? 'btn-primary' : 'btn-outline-primary' }}">Tous</a>
+    <a href="{{ path('app_rendezvous_index', {statut: 'en_attente'}) }}" class="btn btn-sm {{ currentStatut == 'en_attente' ? 'btn-warning' : 'btn-outline-warning' }}"><i class="bi bi-clock"></i> En attente</a>
+    <a href="{{ path('app_rendezvous_index', {statut: 'confirme'}) }}" class="btn btn-sm {{ currentStatut == 'confirme' ? 'btn-success' : 'btn-outline-success' }}"><i class="bi bi-check-circle"></i> Confirmés</a>
+    <a href="{{ path('app_rendezvous_index', {statut: 'annule'}) }}" class="btn btn-sm {{ currentStatut == 'annule' ? 'btn-danger' : 'btn-outline-danger' }}"><i class="bi bi-x-circle"></i> Annulés</a>
+    <a href="{{ path('app_rendezvous_index', {statut: 'termine'}) }}" class="btn btn-sm {{ currentStatut == 'termine' ? 'btn-secondary' : 'btn-outline-secondary' }}"><i class="bi bi-check-all"></i> Terminés</a>
+</div></div></div>
+<div class="card"><div class="card-body p-0">
+{% if rendez_vous|length > 0 %}
+<div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>#</th><th>Date</th><th>Patient</th><th>Médecin</th><th>Motif</th><th>Durée</th><th>Statut</th><th class="text-end">Actions</th></tr></thead><tbody>
+{% for rdv in rendez_vous %}
+<tr><td class="text-muted">#{{ rdv.id }}</td><td><strong>{{ rdv.dateHeure|date('d/m/Y') }}</strong><br><small class="text-muted">{{ rdv.dateHeure|date('H:i') }} - {{ rdv.dateFin|date('H:i') }}</small></td><td><a href="{{ path('app_patient_show', {id: rdv.patient.id}) }}">{{ rdv.patient.nomComplet }}</a></td><td><a href="{{ path('app_medecin_show', {id: rdv.medecin.id}) }}">{{ rdv.medecin.nomComplet }}</a><br><small class="text-muted">{{ rdv.medecin.specialite }}</small></td><td>{{ (rdv.motif|default('-'))|slice(0,30) }}{{ (rdv.motif|default(''))|length > 30 ? '...' : '' }}</td><td>{{ rdv.dureeMinutes }} min</td><td><span class="badge {{ rdv.statutBadgeClass }}">{{ rdv.statutLabel }}</span></td><td class="text-end"><div class="btn-group btn-group-sm"><a href="{{ path('app_rendezvous_show', {id: rdv.id}) }}" class="btn btn-outline-primary"><i class="bi bi-eye"></i></a><a href="{{ path('app_rendezvous_edit', {id: rdv.id}) }}" class="btn btn-outline-warning"><i class="bi bi-pencil"></i></a></div></td></tr>
+{% endfor %}
+</tbody></table></div>
+{% else %}<div class="text-center py-5 text-muted"><i class="bi bi-calendar-x" style="font-size:3rem"></i><p class="mt-2">Aucun rendez-vous</p><a href="{{ path('app_rendezvous_new') }}" class="btn btn-primary">Créer</a></div>{% endif %}
+</div></div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{
+  "nouveau": {
+    "nom": "Renaud",
+    "prenom": "Claire",
+    "specialite": "Neurologie",
+    "email": "dr.renaud@cabinet-neuro.fr",
+    "telephone": "0144998877",
+    "numeroOrdre": "ORD99887",
+    "adresseCabinet": "5 place de la Nation, 75012 Paris",
+    "honoraires": "65"
+  },
+  "aSupprimer": {
+    "nom": "Temporaire",
+    "prenom": "Docteur",
+    "specialite": "ORL",
+    "email": "dr.temporaire@test.fr",
+    "telephone": "0100000000"
+  },
+  "specialites": [
+    "Médecine générale",
+    "Cardiologie",
+    "Dermatologie",
+    "Pédiatrie",
+    "Gynécologie",
+    "Ophtalmologie",
+    "Psychiatrie",
+    "ORL"
+  ]
+}

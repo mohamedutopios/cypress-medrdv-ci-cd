@@ -1,0 +1,21 @@
+/.env.local
+/.env.local.php
+/.env.*.local
+/config/secrets/prod/prod.decrypt.private.php
+/public/bundles/
+/var/
+/vendor/
+.idea/
+.vscode/
+
+# Node / Cypress
+node_modules/
+cypress/reports/
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+
+# PHPUnit
+phpunit-report.xml
+phpunit-coverage/
+.phpunit.result.cache

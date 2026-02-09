@@ -1,0 +1,33 @@
+{% extends 'base.html.twig' %}
+{% block title %}Médecins{% endblock %}
+{% block body %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div><h2 class="mb-1">Médecins</h2><p class="text-muted mb-0">{{ medecins|length }} médecin{{ medecins|length > 1 ? 's' }}</p></div>
+    <a href="{{ path('app_medecin_new') }}" class="btn btn-primary"><i class="bi bi-person-plus-fill"></i> Nouveau médecin</a>
+</div>
+{% if specialites|length > 0 %}
+<div class="card mb-4"><div class="card-body py-3"><div class="d-flex gap-2 flex-wrap align-items-center">
+    <span class="text-muted me-2"><i class="bi bi-funnel"></i> Filtrer :</span>
+    <a href="{{ path('app_medecin_index') }}" class="btn btn-sm {{ currentSpecialite == '' ? 'btn-primary' : 'btn-outline-primary' }}">Tous</a>
+    {% for s in specialites %}<a href="{{ path('app_medecin_index', {specialite: s}) }}" class="btn btn-sm {{ currentSpecialite == s ? 'btn-primary' : 'btn-outline-primary' }}">{{ s }}</a>{% endfor %}
+</div></div></div>
+{% endif %}
+<div class="row g-4">
+{% for m in medecins %}
+<div class="col-md-6 col-lg-4"><div class="card h-100">
+    <div class="card-body">
+        <div class="d-flex align-items-center mb-3"><div class="rounded-circle bg-success bg-opacity-10 d-flex align-items-center justify-content-center me-3" style="width:50px;height:50px"><i class="bi bi-person-badge text-success" style="font-size:1.5rem"></i></div><div><h5 class="mb-0">{{ m.nomComplet }}</h5><span class="badge bg-primary bg-opacity-10 text-primary">{{ m.specialite }}</span></div></div>
+        <ul class="list-unstyled small text-muted">
+            <li class="mb-1"><i class="bi bi-envelope"></i> {{ m.email }}</li>
+            <li class="mb-1"><i class="bi bi-telephone"></i> {{ m.telephone }}</li>
+            {% if m.adresseCabinet %}<li class="mb-1"><i class="bi bi-geo-alt"></i> {{ m.adresseCabinet }}</li>{% endif %}
+            {% if m.honoraires %}<li><i class="bi bi-currency-euro"></i> {{ m.honoraires|number_format(2, ',', ' ') }} €</li>{% endif %}
+        </ul>
+    </div>
+    <div class="card-footer bg-transparent d-flex gap-2"><a href="{{ path('app_medecin_show', {id: m.id}) }}" class="btn btn-sm btn-outline-primary flex-grow-1"><i class="bi bi-eye"></i> Détails</a><a href="{{ path('app_medecin_edit', {id: m.id}) }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil"></i></a></div>
+</div></div>
+{% else %}
+<div class="col-12"><div class="card"><div class="card-body text-center py-5 text-muted"><i class="bi bi-person-badge" style="font-size:3rem"></i><p class="mt-2">Aucun médecin</p><a href="{{ path('app_medecin_new') }}" class="btn btn-primary">Ajouter</a></div></div></div>
+{% endfor %}
+</div>
+{% endblock %}

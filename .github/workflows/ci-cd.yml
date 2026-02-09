@@ -1,0 +1,535 @@
+# =============================================================================
+#  MedRDV - Pipeline CI/CD
+#  Jobs : install → build → phpunit → cypress → trivy → docker build & push
+# =============================================================================
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PHP_VERSION: "8.2"
+  NODE_VERSION: "18"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ===========================================================================
+  #  JOB 1 : INSTALLATION
+  # ===========================================================================
+  install:
+    name: 📦 Installation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ env.PHP_VERSION }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo_mysql, intl, zip, opcache
+          tools: composer:v2
+          coverage: xdebug
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Composer install
+        run: composer install --no-scripts --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: npm install
+        run: npm ci
+
+      - name: Upload vendor/
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendor
+          path: vendor/
+          retention-days: 1
+
+      - name: Upload node_modules/
+        uses: actions/upload-artifact@v4
+        with:
+          name: node_modules
+          path: node_modules/
+          retention-days: 1
+
+  # ===========================================================================
+  #  JOB 2 : BUILD & VALIDATION
+  # ===========================================================================
+  build:
+    name: 🔨 Build & Validation
+    runs-on: ubuntu-latest
+    needs: install
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_pass
+          MYSQL_DATABASE: medrdv_db
+          MYSQL_USER: medrdv_user
+          MYSQL_PASSWORD: medrdv_pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: "mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"
+      APP_ENV: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo_mysql, intl, zip, opcache
+
+      - name: Download vendor/
+        uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor/
+
+      - name: Forcer bundles.php
+        run: |
+          cat > config/bundles.php << 'BUNDLES'
+          <?php
+          return [
+              Symfony\Bundle\FrameworkBundle\FrameworkBundle::class => ['all' => true],
+              Doctrine\Bundle\DoctrineBundle\DoctrineBundle::class => ['all' => true],
+              Doctrine\Bundle\MigrationsBundle\DoctrineMigrationsBundle::class => ['all' => true],
+              Symfony\Bundle\TwigBundle\TwigBundle::class => ['all' => true],
+              Doctrine\Bundle\FixturesBundle\DoctrineFixturesBundle::class => ['dev' => true, 'test' => true],
+          ];
+          BUNDLES
+
+      - name: Cache clear
+        run: php bin/console cache:clear
+
+      - name: Lint templates Twig
+        run: php bin/console lint:twig templates/
+
+      - name: Lint conteneur Symfony
+        run: php bin/console lint:container
+
+      - name: Valider schéma Doctrine
+        run: |
+          php bin/console doctrine:database:create --if-not-exists
+          php bin/console doctrine:schema:update --force
+          php bin/console doctrine:schema:validate
+
+      - name: Charger les fixtures
+        run: php bin/console doctrine:fixtures:load --no-interaction
+
+  # ===========================================================================
+  #  JOB 3 : TESTS UNITAIRES & FONCTIONNELS (PHPUnit)
+  #  Génère un rapport JUnit XML + rapport HTML de couverture
+  # ===========================================================================
+  phpunit:
+    name: 🧩 Tests PHPUnit
+    runs-on: ubuntu-latest
+    needs: install
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_pass
+          MYSQL_DATABASE: medrdv_test
+          MYSQL_USER: medrdv_user
+          MYSQL_PASSWORD: medrdv_pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: "mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_test?serverVersion=8.0.32&charset=utf8mb4"
+      APP_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP avec Xdebug (couverture)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo_mysql, intl, zip, opcache, xdebug
+          coverage: xdebug
+
+      - name: Download vendor/
+        uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor/
+
+      - name: Forcer bundles.php
+        run: |
+          cat > config/bundles.php << 'BUNDLES'
+          <?php
+          return [
+              Symfony\Bundle\FrameworkBundle\FrameworkBundle::class => ['all' => true],
+              Doctrine\Bundle\DoctrineBundle\DoctrineBundle::class => ['all' => true],
+              Doctrine\Bundle\MigrationsBundle\DoctrineMigrationsBundle::class => ['all' => true],
+              Symfony\Bundle\TwigBundle\TwigBundle::class => ['all' => true],
+              Doctrine\Bundle\FixturesBundle\DoctrineFixturesBundle::class => ['dev' => true, 'test' => true],
+          ];
+          BUNDLES
+
+      - name: Préparer la base de données de test
+        run: |
+          mkdir -p var/reports
+          php bin/console cache:clear --env=test
+          php bin/console doctrine:database:create --if-not-exists --env=test
+          php bin/console doctrine:schema:update --force --env=test
+          php bin/console doctrine:fixtures:load --no-interaction --env=test
+
+      - name: Lancer PHPUnit (tests unitaires)
+        run: |
+          php vendor/bin/phpunit --testsuite Unit \
+            --log-junit var/reports/junit-unit.xml \
+            --coverage-html var/reports/coverage-html \
+            --coverage-clover var/reports/coverage.xml \
+            --colors=always
+
+      - name: Lancer PHPUnit (tests fonctionnels)
+        run: |
+          php vendor/bin/phpunit --testsuite Functional \
+            --log-junit var/reports/junit-functional.xml \
+            --colors=always
+
+      - name: Fusionner les rapports JUnit
+        if: always()
+        run: |
+          cat > var/reports/merge-junit.php << 'PHPEOF'
+          <?php
+          $files = glob(__DIR__ . '/junit-*.xml');
+          $merged = new DOMDocument('1.0', 'UTF-8');
+          $root = $merged->createElement('testsuites');
+          $merged->appendChild($root);
+          $totalTests = $totalFailures = $totalErrors = $totalTime = 0;
+          foreach ($files as $file) {
+              $doc = new DOMDocument();
+              $doc->load($file);
+              foreach ($doc->getElementsByTagName('testsuite') as $suite) {
+                  $imported = $merged->importNode($suite, true);
+                  $root->appendChild($imported);
+                  $totalTests += (int) $suite->getAttribute('tests');
+                  $totalFailures += (int) $suite->getAttribute('failures');
+                  $totalErrors += (int) $suite->getAttribute('errors');
+                  $totalTime += (float) $suite->getAttribute('time');
+              }
+          }
+          $root->setAttribute('tests', $totalTests);
+          $root->setAttribute('failures', $totalFailures);
+          $root->setAttribute('errors', $totalErrors);
+          $root->setAttribute('time', round($totalTime, 4));
+          $merged->formatOutput = true;
+          $merged->save(__DIR__ . '/junit.xml');
+          echo "Merged: {$totalTests} tests, {$totalFailures} failures, {$totalErrors} errors\n";
+          PHPEOF
+          php var/reports/merge-junit.php
+
+      - name: Publier le rapport JUnit
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: "📊 Rapport PHPUnit"
+          path: var/reports/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload rapport de couverture HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-coverage-report
+          path: var/reports/coverage-html/
+          retention-days: 14
+
+      - name: Upload rapports JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-junit-reports
+          path: var/reports/junit*.xml
+          retention-days: 14
+
+      - name: Afficher le résumé de couverture
+        if: always()
+        run: |
+          if [ -f var/reports/coverage.xml ]; then
+            echo "## 📊 Couverture de code" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            LINE_RATE=$(grep -oP 'lines-valid="\K[^"]+' var/reports/coverage.xml | head -1)
+            LINE_COVERED=$(grep -oP 'lines-covered="\K[^"]+' var/reports/coverage.xml | head -1)
+            if [ -n "$LINE_RATE" ] && [ -n "$LINE_COVERED" ]; then
+              PERCENT=$(echo "scale=1; $LINE_COVERED * 100 / $LINE_RATE" | bc 2>/dev/null || echo "N/A")
+              echo "| Métrique | Valeur |" >> $GITHUB_STEP_SUMMARY
+              echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+              echo "| Lignes couvertes | $LINE_COVERED / $LINE_RATE |" >> $GITHUB_STEP_SUMMARY
+              echo "| Couverture | ${PERCENT}% |" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📥 Télécharger le rapport complet dans les Artifacts" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ===========================================================================
+  #  JOB 4 : TESTS CYPRESS + RAPPORT HTML MOCHAWESOME
+  # ===========================================================================
+  cypress:
+    name: 🧪 Tests Cypress
+    runs-on: ubuntu-latest
+    needs: install
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_pass
+          MYSQL_DATABASE: medrdv_db
+          MYSQL_USER: medrdv_user
+          MYSQL_PASSWORD: medrdv_pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: "mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"
+      APP_ENV: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo_mysql, intl, zip, opcache
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download vendor/
+        uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor/
+
+      - name: Download node_modules/
+        uses: actions/download-artifact@v4
+        with:
+          name: node_modules
+          path: node_modules/
+
+      - name: Forcer bundles.php
+        run: |
+          cat > config/bundles.php << 'BUNDLES'
+          <?php
+          return [
+              Symfony\Bundle\FrameworkBundle\FrameworkBundle::class => ['all' => true],
+              Doctrine\Bundle\DoctrineBundle\DoctrineBundle::class => ['all' => true],
+              Doctrine\Bundle\MigrationsBundle\DoctrineMigrationsBundle::class => ['all' => true],
+              Symfony\Bundle\TwigBundle\TwigBundle::class => ['all' => true],
+              Doctrine\Bundle\FixturesBundle\DoctrineFixturesBundle::class => ['dev' => true, 'test' => true],
+          ];
+          BUNDLES
+
+      - name: Préparer la base de données
+        run: |
+          php bin/console cache:clear
+          php bin/console doctrine:database:create --if-not-exists
+          php bin/console doctrine:schema:update --force
+          php bin/console doctrine:fixtures:load --no-interaction
+
+      - name: Démarrer le serveur PHP
+        run: |
+          php -S 127.0.0.1:8000 -t public/ &
+          sleep 3
+          curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000 || true
+
+      - name: Lancer Cypress
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          wait-on: "http://127.0.0.1:8000"
+          wait-on-timeout: 30
+          config: baseUrl=http://127.0.0.1:8000
+          browser: chrome
+
+      - name: Upload rapport Cypress HTML (mochawesome)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-report-html
+          path: cypress/reports/
+          retention-days: 30
+
+      - name: Upload screenshots en cas d'échec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: cypress/screenshots/
+          retention-days: 7
+
+      - name: Upload vidéos Cypress
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: cypress/videos/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ===========================================================================
+  #  JOB 5 : TRIVY SECURITY SCAN
+  # ===========================================================================
+  trivy:
+    name: 🔒 Trivy Security Scan
+    runs-on: ubuntu-latest
+    needs: install
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download vendor/
+        uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor/
+
+      - name: Download node_modules/
+        uses: actions/download-artifact@v4
+        with:
+          name: node_modules
+          path: node_modules/
+
+      - name: Trivy - Scan vulnérabilités (filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy - Export SARIF
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "0"
+
+      - name: Upload résultats Trivy (SARIF)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+        continue-on-error: true
+
+  # ===========================================================================
+  #  JOB 6 : BUILD & PUSH DOCKER IMAGE
+  # ===========================================================================
+  docker:
+    name: 🐳 Build & Push Docker
+    runs-on: ubuntu-latest
+    needs: [build, phpunit, cypress, trivy]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image pour scan
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+          load: true
+
+      - name: Trivy - Scan de l'image Docker
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Login GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extraire les métadonnées Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

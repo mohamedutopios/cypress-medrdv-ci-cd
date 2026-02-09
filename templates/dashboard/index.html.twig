@@ -1,0 +1,44 @@
+{% extends 'base.html.twig' %}
+{% block title %}Tableau de bord{% endblock %}
+{% block body %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div><h2 class="mb-1">Tableau de bord</h2><p class="text-muted mb-0">Vue d'ensemble</p></div>
+    <a href="{{ path('app_rendezvous_new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Nouveau RDV</a>
+</div>
+<div class="row g-4 mb-4">
+    <div class="col-md-3"><div class="card stat-card"><div class="card-body d-flex align-items-center"><div class="stat-icon bg-primary bg-opacity-10 text-primary me-3"><i class="bi bi-people"></i></div><div><div class="text-muted small">Patients</div><div class="h4 mb-0">{{ totalPatients }}</div></div></div></div></div>
+    <div class="col-md-3"><div class="card stat-card"><div class="card-body d-flex align-items-center"><div class="stat-icon bg-success bg-opacity-10 text-success me-3"><i class="bi bi-person-badge"></i></div><div><div class="text-muted small">Médecins</div><div class="h4 mb-0">{{ totalMedecins }}</div></div></div></div></div>
+    <div class="col-md-3"><div class="card stat-card"><div class="card-body d-flex align-items-center"><div class="stat-icon bg-warning bg-opacity-10 text-warning me-3"><i class="bi bi-calendar-day"></i></div><div><div class="text-muted small">RDV aujourd'hui</div><div class="h4 mb-0">{{ rdvAujourdhui|length }}</div></div></div></div></div>
+    <div class="col-md-3"><div class="card stat-card"><div class="card-body d-flex align-items-center"><div class="stat-icon bg-info bg-opacity-10 text-info me-3"><i class="bi bi-graph-up"></i></div><div><div class="text-muted small">RDV à venir</div><div class="h4 mb-0">{{ prochains_rdv|length }}</div></div></div></div></div>
+</div>
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center py-3"><h5 class="mb-0"><i class="bi bi-calendar-day text-primary"></i> RDV du jour</h5><a href="{{ path('app_rendezvous_index') }}" class="btn btn-sm btn-outline-primary">Voir tout</a></div>
+            <div class="card-body p-0">
+                {% if rdvAujourdhui|length > 0 %}
+                <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Heure</th><th>Patient</th><th>Médecin</th><th>Motif</th><th>Statut</th></tr></thead><tbody>
+                {% for rdv in rdvAujourdhui %}
+                <tr><td><strong>{{ rdv.dateHeure|date('H:i') }}</strong></td><td><a href="{{ path('app_patient_show', {id: rdv.patient.id}) }}">{{ rdv.patient.nomComplet }}</a></td><td>{{ rdv.medecin.nomComplet }}</td><td>{{ (rdv.motif|default('-'))|slice(0,40) }}{{ (rdv.motif|default(''))|length > 40 ? '...' : '' }}</td><td><span class="badge {{ rdv.statutBadgeClass }}">{{ rdv.statutLabel }}</span></td></tr>
+                {% endfor %}
+                </tbody></table></div>
+                {% else %}<div class="text-center py-5 text-muted"><i class="bi bi-calendar-x" style="font-size:2rem"></i><p class="mt-2">Aucun RDV aujourd'hui</p></div>{% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header py-3"><h5 class="mb-0"><i class="bi bi-clock text-success"></i> Prochains RDV</h5></div>
+            <div class="card-body p-0">
+                {% if prochains_rdv|length > 0 %}
+                <div class="list-group list-group-flush">{% for rdv in prochains_rdv %}
+                <a href="{{ path('app_rendezvous_show', {id: rdv.id}) }}" class="list-group-item list-group-item-action py-3">
+                    <div class="d-flex justify-content-between"><strong>{{ rdv.patient.nomComplet }}</strong><span class="badge {{ rdv.statutBadgeClass }}">{{ rdv.statutLabel }}</span></div>
+                    <small class="text-muted"><i class="bi bi-person-badge"></i> {{ rdv.medecin.nomComplet }}<br><i class="bi bi-calendar"></i> {{ rdv.dateHeure|date('d/m/Y à H:i') }}</small>
+                </a>{% endfor %}</div>
+                {% else %}<div class="text-center py-4 text-muted">Aucun RDV à venir</div>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

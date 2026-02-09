@@ -1,0 +1,28 @@
+services:
+  database:
+    image: mysql:8.0
+    container_name: medrdv_db
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: medrdv_db
+      MYSQL_USER: medrdv_user
+      MYSQL_PASSWORD: medrdv_pass
+    volumes:
+      - db_data:/var/lib/mysql
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: medrdv_pma
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: database
+      PMA_USER: medrdv_user
+      PMA_PASSWORD: medrdv_pass
+    depends_on:
+      - database
+
+volumes:
+  db_data:

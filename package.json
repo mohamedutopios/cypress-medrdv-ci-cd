@@ -1,0 +1,22 @@
+{
+  "name": "medrdv-cypress-tests",
+  "version": "1.0.0",
+  "description": "Tests E2E Cypress pour MedRDV",
+  "scripts": {
+    "cy:open": "cypress open",
+    "cy:run": "cypress run",
+    "cy:run:headed": "cypress run --headed",
+    "cy:run:chrome": "cypress run --browser chrome",
+    "cy:run:navigation": "cypress run --spec 'cypress/e2e/navigation/**'",
+    "cy:run:dashboard": "cypress run --spec 'cypress/e2e/dashboard/**'",
+    "cy:run:patients": "cypress run --spec 'cypress/e2e/patients/**'",
+    "cy:run:medecins": "cypress run --spec 'cypress/e2e/medecins/**'",
+    "cy:run:rdv": "cypress run --spec 'cypress/e2e/rendezvous/**'",
+    "cy:run:scenarios": "cypress run --spec 'cypress/e2e/scenarios/**'"
+  },
+  "devDependencies": {
+    "cypress": "^13.6.0",
+    "cypress-mochawesome-reporter": "^3.8.0",
+    "typescript": "^5.3.0"
+  }
+}

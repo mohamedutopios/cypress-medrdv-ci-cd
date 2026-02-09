@@ -1,0 +1,28 @@
+{
+  "nouveau": {
+    "nom": "Moreau",
+    "prenom": "Charlotte",
+    "email": "charlotte.moreau@gmail.com",
+    "telephone": "0678451290",
+    "dateNaissance": "1994-03-22",
+    "nss": "294037512345",
+    "adresse": "14 rue Voltaire, 75011 Paris"
+  },
+  "modification": {
+    "telephone": "0699001122",
+    "adresse": "28 boulevard Beaumarchais, 75011 Paris"
+  },
+  "aSupprimer": {
+    "nom": "Temporaire",
+    "prenom": "Patient",
+    "email": "temporaire.patient@test.fr",
+    "telephone": "0600000000",
+    "dateNaissance": "1990-01-01"
+  },
+  "existants": [
+    { "nom": "Dupont", "prenom": "Jean" },
+    { "nom": "Leroy", "prenom": "Marie" },
+    { "nom": "Girard", "prenom": "Lucas" },
+    { "nom": "Bonnet", "prenom": "Emma" }
+  ]
+}
