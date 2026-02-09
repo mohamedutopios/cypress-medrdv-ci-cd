@@ -118,6 +118,11 @@ jobs:
           ];
           BUNDLES
 
+      - name: Configurer .env.local
+        run: |
+          echo 'DATABASE_URL="mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"' > .env.local
+          echo 'APP_ENV=dev' >> .env.local
+
       - name: Cache clear
         run: php bin/console cache:clear
 
@@ -142,7 +147,7 @@ jobs:
   cypress:
     name: 🧪 Tests Cypress
     runs-on: ubuntu-latest
-    needs: install
+    needs: [install, build]
 
     services:
       mysql:
@@ -204,6 +209,11 @@ jobs:
           ];
           BUNDLES
 
+      - name: Configurer .env.local
+        run: |
+          echo 'DATABASE_URL="mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"' > .env.local
+          echo 'APP_ENV=dev' >> .env.local
+
       - name: Préparer la base de données
         run: |
           php bin/console cache:clear
@@ -213,18 +223,35 @@ jobs:
 
       - name: Démarrer le serveur PHP
         run: |
-          php -S 127.0.0.1:8000 -t public/ &
+          php -S 127.0.0.1:8000 -t public/ > /tmp/php-server.log 2>&1 &
           sleep 3
-          curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000 || true
+
+      - name: Vérifier le serveur
+        run: |
+          echo "=== Réponse HTTP ==="
+          curl -s -o /dev/null -w "HTTP %{http_code}" http://127.0.0.1:8000
+          echo ""
+          echo "=== Logs PHP server ==="
+          cat /tmp/php-server.log || true
+          echo "=== Logs Symfony ==="
+          cat var/log/dev.log 2>/dev/null | tail -30 || true
 
       - name: Lancer Cypress
         uses: cypress-io/github-action@v6
         with:
           install: false
           wait-on: "http://127.0.0.1:8000"
-          wait-on-timeout: 30
+          wait-on-timeout: 60
           config: baseUrl=http://127.0.0.1:8000
           browser: chrome
+
+      - name: Debug logs si échec
+        if: failure()
+        run: |
+          echo "=== Logs PHP server ==="
+          cat /tmp/php-server.log || true
+          echo "=== Logs Symfony ==="
+          cat var/log/dev.log 2>/dev/null | tail -100 || true
 
       - name: Upload rapport Cypress HTML (mochawesome)
         if: always()
