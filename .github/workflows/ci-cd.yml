@@ -236,6 +236,9 @@ jobs:
           echo "=== Logs Symfony ==="
           cat var/log/dev.log 2>/dev/null | tail -30 || true
 
+      - name: Installer le binaire Cypress
+        run: npx cypress install
+
       - name: Lancer Cypress
         uses: cypress-io/github-action@v6
         with:
