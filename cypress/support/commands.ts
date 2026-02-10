@@ -63,3 +63,8 @@ Cypress.Commands.add("navigateTo", (section) => {
 Cypress.Commands.add("checkFlash", (type, text) => {
   cy.get(`.alert-${type}`).should("be.visible").and("contain.text", text);
 });
+
+
+Cypress.Commands.add("step", (label: string) => {
+  cy.log(`🧭 ${label}`);
+});

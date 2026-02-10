@@ -27,3 +27,28 @@ export default defineConfig({
     },
   },
 });
+
+
+import { defineConfig } from "cypress";
+
+export default defineConfig({
+  reporter: "mochawesome",
+
+  reporterOptions: {
+    reportDir: "cypress/reports",
+    html: true,
+    json: true,
+    charts: true,
+    embeddedScreenshots: true,
+    inlineAssets: true,
+    reportTitle: "Rapport de tests fonctionnels – Médecins",
+    reportPageTitle: "Validation applicative"
+  },
+
+  e2e: {
+    baseUrl: "http://127.0.0.1:8000",
+    screenshotOnRunFailure: true,
+    video: false
+  }
+});
+

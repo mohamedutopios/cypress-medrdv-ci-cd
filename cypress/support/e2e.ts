@@ -1,6 +1,7 @@
 /// <reference types="cypress" />
 /// <reference path="./index.d.ts" />
 
+
 import "./commands";
 import "cypress-mochawesome-reporter/register";
 
