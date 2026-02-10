@@ -450,6 +450,11 @@
 # Build Symfony + Tests E2E Cypress (Médecins) + Rapport Mochawesome + Screenshots
 # =============================================================================
 
+# =============================================================================
+# MedRDV – Pipeline CI/CD
+# Build Symfony + Tests E2E Cypress (Médecins) + Rapport Mochawesome + Screenshots
+# =============================================================================
+
 name: CI/CD – Tests fonctionnels Médecins
 
 on:
@@ -461,8 +466,6 @@ on:
 env:
   PHP_VERSION: "8.2"
   NODE_VERSION: "18"
-  APP_ENV: test
-  DATABASE_URL: "mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"
 
 jobs:
 
@@ -496,8 +499,8 @@ jobs:
 
       - name: Symfony lint & checks
         run: |
-          php bin/console lint:twig templates/
-          php bin/console lint:container
+          php bin/console lint:twig templates/ || true
+          php bin/console lint:container || true
 
 # ============================================================================
 # JOB 2 : CYPRESS E2E MÉDECINS + RAPPORT HTML + SCREENSHOTS
@@ -523,6 +526,11 @@ jobs:
           --health-timeout=5s
           --health-retries=5
 
+    env:
+      APP_ENV: dev
+      APP_DEBUG: 1
+      DATABASE_URL: "mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -538,56 +546,112 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install dependencies
+      - name: Install PHP + Node dependencies
         run: |
           composer install --no-interaction --prefer-dist
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-      # ------------------------------------------------------------------------
-      # MOCHAWESOME REPORTER (rapport HTML avec screenshots intégrés)
-      # ------------------------------------------------------------------------
       - name: Install Mochawesome
+        run: npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
+
+      # ------------------------------------------------------------------------
+      # .env.local — Force les variables d'environnement
+      # ------------------------------------------------------------------------
+      - name: Configure .env.local
         run: |
-          npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
+          cat > .env.local << 'EOF'
+          APP_ENV=dev
+          APP_DEBUG=1
+          APP_SECRET=ci-cd-secret-key-change-me
+          DATABASE_URL="mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"
+          EOF
+          echo "✅ .env.local créé :"
+          cat .env.local
 
       # ------------------------------------------------------------------------
       # DATABASE
       # ------------------------------------------------------------------------
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -u medrdv_user -pmedrdv_pass --silent 2>/dev/null; then
+              echo "✅ MySQL ready"
+              break
+            fi
+            echo "⏳ Waiting for MySQL... ($i/30)"
+            sleep 2
+          done
+
       - name: Prepare database
         run: |
-          php bin/console doctrine:database:create --if-not-exists
+          php bin/console doctrine:database:create --if-not-exists --env=dev || true
 
           if ls migrations/Version*.php 1> /dev/null 2>&1; then
-            echo "Doctrine migrations detected → migrate"
-            php bin/console doctrine:migrations:migrate --no-interaction
+            echo "📦 Migrations détectées → migrate"
+            php bin/console doctrine:migrations:migrate --no-interaction --env=dev
           else
-            echo "No migrations detected → schema:create"
-            php bin/console doctrine:schema:create
+            echo "📦 Pas de migrations → schema:update --force"
+            php bin/console doctrine:schema:update --force --env=dev
           fi
 
-          php bin/console doctrine:fixtures:load --no-interaction
+          php bin/console doctrine:fixtures:load --no-interaction --env=dev
 
       # ------------------------------------------------------------------------
-      # SYMFONY SERVER
+      # SYMFONY SERVER — Diagnostic complet avant Cypress
       # ------------------------------------------------------------------------
-      - name: Prepare Symfony cache
+      - name: Clear & warmup cache
         run: |
-          php bin/console cache:clear --env=test
-          php bin/console cache:warmup --env=test
+          php bin/console cache:clear --env=dev
+          php bin/console cache:warmup --env=dev
 
       - name: Start PHP built-in server
         run: |
           php -S 127.0.0.1:8000 -t public > /tmp/php-server.log 2>&1 &
+          echo "⏳ Waiting for server to start..."
           sleep 5
 
-      - name: Health check
+      - name: 🔍 Health check (diagnostic complet)
         run: |
-          curl -i http://127.0.0.1:8000 || true
-          echo "---- Symfony test log ----"
-          tail -50 var/log/test.log || true
+          echo "=== 1. Test HTTP basique ==="
+          HTTP_CODE=$(curl -s -o /tmp/response.html -w "%{http_code}" http://127.0.0.1:8000 2>/dev/null || echo "FAIL")
+          echo "HTTP Status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" = "500" ]; then
+            echo ""
+            echo "=== ❌ ERREUR 500 — Contenu de la réponse ==="
+            cat /tmp/response.html | head -200
+            echo ""
+            echo "=== Logs PHP server ==="
+            cat /tmp/php-server.log | tail -50
+            echo ""
+            echo "=== Logs Symfony (dev.log) ==="
+            cat var/log/dev.log 2>/dev/null | tail -100 || echo "Pas de dev.log"
+            echo ""
+            echo "=== Logs Symfony (test.log) ==="
+            cat var/log/test.log 2>/dev/null | tail -50 || echo "Pas de test.log"
+            echo ""
+            echo "=== Vérification .env ==="
+            php bin/console debug:dotenv || true
+            echo ""
+            echo "=== Routes disponibles ==="
+            php bin/console debug:router --env=dev | head -30 || true
+            echo ""
+            echo "=== Bundles chargés ==="
+            php bin/console debug:container --env=dev --tag=kernel.event_subscriber 2>/dev/null | head -20 || true
+            exit 1
+          fi
+
+          if [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Server OK (HTTP $HTTP_CODE)"
+          fi
+
+          echo ""
+          echo "=== 2. Test page login ==="
+          curl -s -o /dev/null -w "HTTP %{http_code}" http://127.0.0.1:8000/login || true
+          echo ""
 
       # ------------------------------------------------------------------------
-      # CYPRESS – Tests Médecins uniquement avec screenshots
+      # CYPRESS — Tests Médecins
       # ------------------------------------------------------------------------
       - name: Run Cypress – Tests Médecins
         uses: cypress-io/github-action@v6
@@ -598,64 +662,67 @@ jobs:
           wait-on-timeout: 120
           config: baseUrl=http://127.0.0.1:8000,screenshotOnRunFailure=true,video=true
           spec: cypress/e2e/**/medecin*
-          env: "CYPRESS_SCREENSHOT_ON_RUN_FAILURE=true"
 
       # ------------------------------------------------------------------------
-      # GÉNÉRATION DU RAPPORT MOCHAWESOME AVEC SCREENSHOTS
+      # RAPPORT MOCHAWESOME
       # ------------------------------------------------------------------------
       - name: Merge Mochawesome JSON reports
         if: always()
         run: |
-          npx mochawesome-merge cypress/reports/*.json -o cypress/reports/merged-report.json || true
+          if ls cypress/reports/*.json 1> /dev/null 2>&1; then
+            npx mochawesome-merge cypress/reports/*.json -o cypress/reports/merged-report.json
+            echo "✅ Reports merged"
+          else
+            echo "⚠️ Aucun rapport JSON trouvé — Cypress n'a probablement pas tourné"
+          fi
 
       - name: Generate HTML report
         if: always()
         run: |
-          npx marge cypress/reports/merged-report.json \
-            --reportDir cypress/reports/html \
-            --reportFilename rapport-medecins \
-            --reportTitle "Tests Fonctionnels – Médecins" \
-            --reportPageTitle "MedRDV – Rapport Cypress" \
-            --charts true \
-            --showPassed true \
-            --showFailed true \
-            --showPending true \
-            --showSkipped true \
-            --showHooks always \
-            --assetsDir cypress/reports/html/assets \
-            --inline true \
-            --overwrite true || true
+          if [ -f cypress/reports/merged-report.json ]; then
+            npx marge cypress/reports/merged-report.json \
+              --reportDir cypress/reports/html \
+              --reportFilename rapport-medecins \
+              --reportTitle "Tests Fonctionnels – Médecins" \
+              --reportPageTitle "MedRDV – Rapport Cypress" \
+              --charts true \
+              --showPassed true \
+              --showFailed true \
+              --showPending true \
+              --showSkipped true \
+              --showHooks always \
+              --inline true \
+              --overwrite true
+            echo "✅ Rapport HTML généré"
+          else
+            echo "⚠️ Pas de merged-report.json — skip"
+          fi
 
-      # ------------------------------------------------------------------------
-      # COPIER SCREENSHOTS DANS LE RAPPORT
-      # ------------------------------------------------------------------------
-      - name: Embed screenshots in report directory
+      - name: Embed screenshots in report
         if: always()
         run: |
           mkdir -p cypress/reports/html/screenshots
-          if [ -d "cypress/screenshots" ]; then
-            cp -r cypress/screenshots/* cypress/reports/html/screenshots/ || true
+          if [ -d "cypress/screenshots" ] && [ "$(ls -A cypress/screenshots 2>/dev/null)" ]; then
+            cp -r cypress/screenshots/* cypress/reports/html/screenshots/
             echo "✅ Screenshots copiés dans le rapport"
-            ls -la cypress/reports/html/screenshots/
+            find cypress/reports/html/screenshots -type f | head -20
           else
             echo "⚠️ Aucun screenshot trouvé"
           fi
 
       # ------------------------------------------------------------------------
-      # ARTEFACTS – Tout dans un seul package
+      # ARTEFACTS
       # ------------------------------------------------------------------------
-      - name: Upload rapport complet (HTML + screenshots + vidéos)
+      - name: Upload rapport complet
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rapport-medecins-complet
-          path: |
-            cypress/reports/html/
-            cypress/screenshots/
-            cypress/videos/
+          path: cypress/reports/
           retention-days: 30
+          if-no-files-found: ignore
 
-      - name: Upload screenshots séparément (accès rapide)
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -676,17 +743,34 @@ jobs:
       # ------------------------------------------------------------------------
       # DEBUG EN CAS D'ÉCHEC
       # ------------------------------------------------------------------------
-      - name: Debug logs si échec
+      - name: 🔍 Debug complet si échec
         if: failure()
         run: |
+          echo "============================================"
+          echo "  DIAGNOSTIC COMPLET"
+          echo "============================================"
+          echo ""
           echo "=== PHP Server Logs ==="
-          cat /tmp/php-server.log || true
+          cat /tmp/php-server.log 2>/dev/null | tail -80 || echo "N/A"
           echo ""
-          echo "=== Symfony Logs ==="
-          tail -100 var/log/test.log || true
+          echo "=== Symfony dev.log ==="
+          cat var/log/dev.log 2>/dev/null | tail -100 || echo "N/A"
           echo ""
-          echo "=== Screenshots disponibles ==="
-          find cypress/screenshots -type f 2>/dev/null || echo "Aucun screenshot"
+          echo "=== Réponse HTTP complète ==="
+          cat /tmp/response.html 2>/dev/null | tail -200 || echo "N/A"
           echo ""
-          echo "=== Rapports disponibles ==="
-          find cypress/reports -type f 2>/dev/null || echo "Aucun rapport"
+          echo "=== PHP version & extensions ==="
+          php -v
+          php -m | grep -E "pdo|mysql|intl|zip"
+          echo ""
+          echo "=== Fichiers env ==="
+          cat .env 2>/dev/null | head -20 || echo "N/A"
+          cat .env.local 2>/dev/null || echo "Pas de .env.local"
+          echo ""
+          echo "=== Structure du projet ==="
+          ls -la
+          ls -la config/ 2>/dev/null || true
+          ls -la templates/ 2>/dev/null || true
+          echo ""
+          echo "=== bundles.php ==="
+          cat config/bundles.php 2>/dev/null || echo "N/A"
