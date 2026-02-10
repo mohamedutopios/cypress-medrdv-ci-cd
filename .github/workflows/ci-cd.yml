@@ -377,15 +377,16 @@ jobs:
         run: |
           php bin/console doctrine:database:create --if-not-exists
 
-          if [ -d "migrations" ] && [ "$(ls -A migrations)" ]; then
-            echo "Migrations found → running migrate"
+          if ls migrations/Version*.php 1> /dev/null 2>&1; then
+            echo "Doctrine migrations detected → running migrate"
             php bin/console doctrine:migrations:migrate --no-interaction
           else
-            echo "No migrations found → skipping migrate"
+            echo "No Doctrine migrations detected → using schema:create"
             php bin/console doctrine:schema:create
           fi
 
           php bin/console doctrine:fixtures:load --no-interaction
+
 
 
 
