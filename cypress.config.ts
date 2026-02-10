@@ -1,54 +1,75 @@
-import { defineConfig } from "cypress";
+// cypress.config.js — Configuration avec Mochawesome + Screenshots
 
-export default defineConfig({
+const { defineConfig } = require('cypress')
+
+module.exports = defineConfig({
   e2e: {
-    baseUrl: "http://127.0.0.1:8003",
-    supportFile: "cypress/support/e2e.ts",
-    specPattern: "cypress/e2e/**/*.cy.ts",
-    viewportWidth: 1280,
-    viewportHeight: 800,
-    defaultCommandTimeout: 10000,
-    video: false,
+    baseUrl: 'http://127.0.0.1:8000',
+
+    // =========================================================================
+    // SPECS — Cibler les tests médecins
+    // =========================================================================
+    specPattern: 'cypress/e2e/**/medecin*',
+
+    // =========================================================================
+    // SCREENSHOTS — Toujours capturer
+    // =========================================================================
     screenshotOnRunFailure: true,
-    chromeWebSecurity: false,
-    retries: { runMode: 1, openMode: 0 },
-    reporter: "cypress-mochawesome-reporter",
+    screenshotsFolder: 'cypress/screenshots',
+    trashAssetsBeforeRuns: true,
+
+    // =========================================================================
+    // VIDÉOS
+    // =========================================================================
+    video: true,
+    videosFolder: 'cypress/videos',
+
+    // =========================================================================
+    // REPORTER — Mochawesome (rapport HTML)
+    // =========================================================================
+    reporter: 'mochawesome',
     reporterOptions: {
-      reportDir: "cypress/reports",
+      reportDir: 'cypress/reports',
       overwrite: false,
-      html: true,
-      json: true,
+      html: false,          // On génère le HTML après merge
+      json: true,           // Génère un JSON par spec
+      timestamp: 'yyyy-mm-dd_HH-MM-ss',
       charts: true,
+      reportPageTitle: 'MedRDV – Tests Médecins',
+      reportTitle: 'Tests Fonctionnels – Médecins',
       embeddedScreenshots: true,
       inlineAssets: true,
     },
-    setupNodeEvents(on) {
-      require("cypress-mochawesome-reporter/plugin")(on);
+
+    // =========================================================================
+    // TIMEOUTS
+    // =========================================================================
+    defaultCommandTimeout: 10000,
+    pageLoadTimeout: 30000,
+    requestTimeout: 10000,
+
+    // =========================================================================
+    // SETUP
+    // =========================================================================
+    supportFile: 'cypress/support/e2e.js',
+
+    setupNodeEvents(on, config) {
+      // Screenshot après chaque test (même réussi)
+      on('after:screenshot', (details) => {
+        console.log('📸 Screenshot:', details.path)
+      })
+
+      return config
     },
   },
-});
 
-
-import { defineConfig } from "cypress";
-
-export default defineConfig({
-  reporter: "mochawesome",
-
-  reporterOptions: {
-    reportDir: "cypress/reports",
-    html: true,
-    json: true,
-    charts: true,
-    embeddedScreenshots: true,
-    inlineAssets: true,
-    reportTitle: "Rapport de tests fonctionnels – Médecins",
-    reportPageTitle: "Validation applicative"
+  // ===========================================================================
+  // CREDENTIALS
+  // ===========================================================================
+  env: {
+    adminUsername: 'admin@medrdv.fr',
+    adminPassword: 'admin123',
+    medecinUsername: 'medecin@medrdv.fr',
+    medecinPassword: 'medecin123',
   },
-
-  e2e: {
-    baseUrl: "http://127.0.0.1:8000",
-    screenshotOnRunFailure: true,
-    video: false
-  }
-});
-
+})

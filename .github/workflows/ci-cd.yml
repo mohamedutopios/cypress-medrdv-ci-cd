@@ -286,7 +286,171 @@
 # Build Symfony + Tests E2E Cypress + Rapport Mochawesome
 # =============================================================================
 
-name: CI/CD – Tests fonctionnels
+# name: CI/CD – Tests fonctionnels
+
+# on:
+#   push:
+#     branches: [main, develop]
+#   pull_request:
+#     branches: [main]
+
+# env:
+#   PHP_VERSION: "8.2"
+#   NODE_VERSION: "18"
+#   APP_ENV: test
+#   DATABASE_URL: "mysql://medrdv_user:medrdv_pass@127.0.0.1:3306/medrdv_db?serverVersion=8.0.32&charset=utf8mb4"
+
+# jobs:
+
+# # ============================================================================
+# # JOB 1 : BUILD & VALIDATION SYMFONY
+# # ============================================================================
+#   build:
+#     name: 🔨 Build & Validation Symfony
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       - name: Setup PHP
+#         uses: shivammathur/setup-php@v2
+#         with:
+#           php-version: ${{ env.PHP_VERSION }}
+#           extensions: pdo_mysql, intl, zip
+#           tools: composer:v2
+
+#       - name: Setup Node
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: ${{ env.NODE_VERSION }}
+
+#       - name: Install dependencies
+#         run: |
+#           composer install --no-interaction --prefer-dist
+#           if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+#       - name: Symfony lint & checks
+#         run: |
+#           php bin/console lint:twig templates/
+#           php bin/console lint:container
+
+# # ============================================================================
+# # JOB 2 : CYPRESS E2E + RAPPORT HTML
+# # ============================================================================
+#   cypress:
+#     name: 🧪 Tests fonctionnels – Médecins
+#     runs-on: ubuntu-latest
+#     needs: build
+
+#     services:
+#       mysql:
+#         image: mysql:8.0
+#         env:
+#           MYSQL_DATABASE: medrdv_db
+#           MYSQL_USER: medrdv_user
+#           MYSQL_PASSWORD: medrdv_pass
+#           MYSQL_ROOT_PASSWORD: root
+#         ports:
+#           - 3306:3306
+#         options: >-
+#           --health-cmd="mysqladmin ping -h localhost"
+#           --health-interval=10s
+#           --health-timeout=5s
+#           --health-retries=5
+
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       - name: Setup PHP
+#         uses: shivammathur/setup-php@v2
+#         with:
+#           php-version: ${{ env.PHP_VERSION }}
+#           extensions: pdo_mysql, intl, zip
+
+#       - name: Setup Node
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: ${{ env.NODE_VERSION }}
+
+#       - name: Install dependencies
+#         run: |
+#           composer install --no-interaction --prefer-dist
+#           if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+#       # ------------------------------------------------------------------------
+#       # DATABASE
+#       # ------------------------------------------------------------------------
+#       - name: Prepare database
+#         run: |
+#           php bin/console doctrine:database:create --if-not-exists
+
+#           if ls migrations/Version*.php 1> /dev/null 2>&1; then
+#             echo "Doctrine migrations detected → migrate"
+#             php bin/console doctrine:migrations:migrate --no-interaction
+#           else
+#             echo "No migrations detected → schema:create"
+#             php bin/console doctrine:schema:create
+#           fi
+
+#           php bin/console doctrine:fixtures:load --no-interaction
+
+#       # ------------------------------------------------------------------------
+#       # SYMFONY SERVER (CRUCIAL)
+#       # ------------------------------------------------------------------------
+#       - name: Prepare Symfony cache
+#         run: |
+#           php bin/console cache:clear --env=test
+#           php bin/console cache:warmup --env=test
+
+#       - name: Start PHP built-in server
+#         run: |
+#           php -S 127.0.0.1:8000 -t public > /tmp/php-server.log 2>&1 &
+#           sleep 5
+
+#       - name: Health check
+#         run: |
+#           curl -i http://127.0.0.1:8000 || true
+#           echo "---- Symfony test log ----"
+#           tail -50 var/log/test.log || true
+
+#       # ------------------------------------------------------------------------
+#       # CYPRESS
+#       # ------------------------------------------------------------------------
+#       - name: Run Cypress (Mochawesome)
+#         uses: cypress-io/github-action@v6
+#         with:
+#           browser: chrome
+#           wait-on: http://127.0.0.1:8000
+#           wait-on-timeout: 120
+#           config: baseUrl=http://127.0.0.1:8000
+
+#       # ------------------------------------------------------------------------
+#       # ARTEFACTS
+#       # ------------------------------------------------------------------------
+#       - name: Upload HTML report (client)
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: rapport-tests-fonctionnels
+#           path: cypress/reports
+#           retention-days: 30
+
+#       - name: Upload screenshots (si échec)
+#         if: failure()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: preuves-ecran
+#           path: cypress/screenshots
+#           retention-days: 7
+
+# =============================================================================
+# MedRDV – Pipeline CI/CD
+# Build Symfony + Tests E2E Cypress (Médecins) + Rapport Mochawesome + Screenshots
+# =============================================================================
+
+name: CI/CD – Tests fonctionnels Médecins
 
 on:
   push:
@@ -336,7 +500,7 @@ jobs:
           php bin/console lint:container
 
 # ============================================================================
-# JOB 2 : CYPRESS E2E + RAPPORT HTML
+# JOB 2 : CYPRESS E2E MÉDECINS + RAPPORT HTML + SCREENSHOTS
 # ============================================================================
   cypress:
     name: 🧪 Tests fonctionnels – Médecins
@@ -380,6 +544,13 @@ jobs:
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
       # ------------------------------------------------------------------------
+      # MOCHAWESOME REPORTER (rapport HTML avec screenshots intégrés)
+      # ------------------------------------------------------------------------
+      - name: Install Mochawesome
+        run: |
+          npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
+
+      # ------------------------------------------------------------------------
       # DATABASE
       # ------------------------------------------------------------------------
       - name: Prepare database
@@ -397,7 +568,7 @@ jobs:
           php bin/console doctrine:fixtures:load --no-interaction
 
       # ------------------------------------------------------------------------
-      # SYMFONY SERVER (CRUCIAL)
+      # SYMFONY SERVER
       # ------------------------------------------------------------------------
       - name: Prepare Symfony cache
         run: |
@@ -416,31 +587,106 @@ jobs:
           tail -50 var/log/test.log || true
 
       # ------------------------------------------------------------------------
-      # CYPRESS
+      # CYPRESS – Tests Médecins uniquement avec screenshots
       # ------------------------------------------------------------------------
-      - name: Run Cypress (Mochawesome)
+      - name: Run Cypress – Tests Médecins
         uses: cypress-io/github-action@v6
         with:
           browser: chrome
+          install: false
           wait-on: http://127.0.0.1:8000
           wait-on-timeout: 120
-          config: baseUrl=http://127.0.0.1:8000
+          config: baseUrl=http://127.0.0.1:8000,screenshotOnRunFailure=true,video=true
+          spec: cypress/e2e/**/medecin*
+          env: "CYPRESS_SCREENSHOT_ON_RUN_FAILURE=true"
 
       # ------------------------------------------------------------------------
-      # ARTEFACTS
+      # GÉNÉRATION DU RAPPORT MOCHAWESOME AVEC SCREENSHOTS
       # ------------------------------------------------------------------------
-      - name: Upload HTML report (client)
+      - name: Merge Mochawesome JSON reports
+        if: always()
+        run: |
+          npx mochawesome-merge cypress/reports/*.json -o cypress/reports/merged-report.json || true
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          npx marge cypress/reports/merged-report.json \
+            --reportDir cypress/reports/html \
+            --reportFilename rapport-medecins \
+            --reportTitle "Tests Fonctionnels – Médecins" \
+            --reportPageTitle "MedRDV – Rapport Cypress" \
+            --charts true \
+            --showPassed true \
+            --showFailed true \
+            --showPending true \
+            --showSkipped true \
+            --showHooks always \
+            --assetsDir cypress/reports/html/assets \
+            --inline true \
+            --overwrite true || true
+
+      # ------------------------------------------------------------------------
+      # COPIER SCREENSHOTS DANS LE RAPPORT
+      # ------------------------------------------------------------------------
+      - name: Embed screenshots in report directory
+        if: always()
+        run: |
+          mkdir -p cypress/reports/html/screenshots
+          if [ -d "cypress/screenshots" ]; then
+            cp -r cypress/screenshots/* cypress/reports/html/screenshots/ || true
+            echo "✅ Screenshots copiés dans le rapport"
+            ls -la cypress/reports/html/screenshots/
+          else
+            echo "⚠️ Aucun screenshot trouvé"
+          fi
+
+      # ------------------------------------------------------------------------
+      # ARTEFACTS – Tout dans un seul package
+      # ------------------------------------------------------------------------
+      - name: Upload rapport complet (HTML + screenshots + vidéos)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rapport-tests-fonctionnels
-          path: cypress/reports
+          name: rapport-medecins-complet
+          path: |
+            cypress/reports/html/
+            cypress/screenshots/
+            cypress/videos/
           retention-days: 30
 
-      - name: Upload screenshots (si échec)
-        if: failure()
+      - name: Upload screenshots séparément (accès rapide)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: preuves-ecran
-          path: cypress/screenshots
+          name: screenshots-medecins
+          path: cypress/screenshots/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload vidéos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos-medecins
+          path: cypress/videos/
           retention-days: 7
+          if-no-files-found: ignore
+
+      # ------------------------------------------------------------------------
+      # DEBUG EN CAS D'ÉCHEC
+      # ------------------------------------------------------------------------
+      - name: Debug logs si échec
+        if: failure()
+        run: |
+          echo "=== PHP Server Logs ==="
+          cat /tmp/php-server.log || true
+          echo ""
+          echo "=== Symfony Logs ==="
+          tail -100 var/log/test.log || true
+          echo ""
+          echo "=== Screenshots disponibles ==="
+          find cypress/screenshots -type f 2>/dev/null || echo "Aucun screenshot"
+          echo ""
+          echo "=== Rapports disponibles ==="
+          find cypress/reports -type f 2>/dev/null || echo "Aucun rapport"
