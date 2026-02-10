@@ -281,6 +281,11 @@
 #           retention-days: 7
 #           if-no-files-found: ignore
 
+# =============================================================================
+# MedRDV – Pipeline CI/CD
+# Build Symfony + Tests E2E Cypress + Rapport Mochawesome
+# =============================================================================
+
 name: CI/CD – Tests fonctionnels
 
 on:
@@ -298,7 +303,7 @@ env:
 jobs:
 
 # ============================================================================
-# JOB 1 : BUILD & VALIDATION
+# JOB 1 : BUILD & VALIDATION SYMFONY
 # ============================================================================
   build:
     name: 🔨 Build & Validation Symfony
@@ -323,7 +328,7 @@ jobs:
       - name: Install dependencies
         run: |
           composer install --no-interaction --prefer-dist
-          npm ci
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
       - name: Symfony lint & checks
         run: |
@@ -355,7 +360,8 @@ jobs:
           --health-retries=5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -371,38 +377,58 @@ jobs:
       - name: Install dependencies
         run: |
           composer install --no-interaction --prefer-dist
-          npm ci
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
+      # ------------------------------------------------------------------------
+      # DATABASE
+      # ------------------------------------------------------------------------
       - name: Prepare database
         run: |
           php bin/console doctrine:database:create --if-not-exists
 
           if ls migrations/Version*.php 1> /dev/null 2>&1; then
-            echo "Doctrine migrations detected → running migrate"
+            echo "Doctrine migrations detected → migrate"
             php bin/console doctrine:migrations:migrate --no-interaction
           else
-            echo "No Doctrine migrations detected → using schema:create"
+            echo "No migrations detected → schema:create"
             php bin/console doctrine:schema:create
           fi
 
           php bin/console doctrine:fixtures:load --no-interaction
 
-
-
-
+      # ------------------------------------------------------------------------
+      # SYMFONY SERVER (CRUCIAL)
+      # ------------------------------------------------------------------------
+      - name: Prepare Symfony cache
+        run: |
+          php bin/console cache:clear --env=test
+          php bin/console cache:warmup --env=test
 
       - name: Start PHP built-in server
         run: |
           php -S 127.0.0.1:8000 -t public > /tmp/php-server.log 2>&1 &
           sleep 5
-          
+
+      - name: Health check
+        run: |
+          curl -i http://127.0.0.1:8000 || true
+          echo "---- Symfony test log ----"
+          tail -50 var/log/test.log || true
+
+      # ------------------------------------------------------------------------
+      # CYPRESS
+      # ------------------------------------------------------------------------
       - name: Run Cypress (Mochawesome)
         uses: cypress-io/github-action@v6
         with:
           browser: chrome
           wait-on: http://127.0.0.1:8000
+          wait-on-timeout: 120
           config: baseUrl=http://127.0.0.1:8000
 
+      # ------------------------------------------------------------------------
+      # ARTEFACTS
+      # ------------------------------------------------------------------------
       - name: Upload HTML report (client)
         if: always()
         uses: actions/upload-artifact@v4
