@@ -376,8 +376,19 @@ jobs:
       - name: Prepare database
         run: |
           php bin/console doctrine:database:create --if-not-exists
-          php bin/console doctrine:migrations:migrate --no-interaction
+
+          if [ -d "migrations" ] && [ "$(ls -A migrations)" ]; then
+            echo "Migrations found → running migrate"
+            php bin/console doctrine:migrations:migrate --no-interaction
+          else
+            echo "No migrations found → skipping migrate"
+            php bin/console doctrine:schema:create
+          fi
+
           php bin/console doctrine:fixtures:load --no-interaction
+
+
+
 
       - name: Start Symfony server
         run: |
